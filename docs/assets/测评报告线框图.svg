@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="880" viewBox="0 0 1280 880" fill="#182B30" role="img" aria-labelledby="title desc">
+  <title id="title">个人测评报告线框图</title>
+  <desc id="desc">展示教师评分、AI 辅助评价、初始想法与终稿对照及过程时间线。</desc>
+  <defs>
+    <style>
+      text { font-family: "Noto Sans SC", "Microsoft YaHei", Arial, sans-serif; }
+      .title { font-size: 25px; font-weight: 700; }
+      .h2 { font-size: 18px; font-weight: 700; }
+      .body { font-size: 15px; }
+      .sub { font-size: 14px; fill: #52666B; }
+      .score { font-size: 24px; font-weight: 700; fill: #0C4A4E; }
+    </style>
+  </defs>
+  <rect width="1280" height="880" fill="#F5F7F6"/>
+  <rect x="0" y="0" width="1280" height="72" fill="#FFFFFF"/>
+  <path d="M0 71.5 H1280" stroke="#DCE5E2"/>
+  <rect x="28" y="18" width="36" height="36" rx="10" fill="#0C4A4E"/>
+  <text x="46" y="43" font-size="22" font-weight="700" fill="#FFFFFF" text-anchor="middle">创</text>
+  <text x="76" y="45" class="h2">共创评测</text>
+  <text x="1121" y="44" class="sub">研究编号：P-024</text>
+
+  <text x="34" y="122" class="title">本次任务测评报告</text>
+  <text x="34" y="150" class="sub">任务 A · AI 素养课堂活动设计 · 本报告仅说明这次任务的表现</text>
+  <rect x="1074" y="105" width="166" height="38" rx="19" fill="#E5F2EC"/>
+  <text x="1157" y="130" class="body" fill="#257A56" text-anchor="middle">教师评价已完成</text>
+
+  <rect x="34" y="180" width="770" height="292" rx="14" fill="#FFFFFF" stroke="#DCE5E2"/>
+  <text x="58" y="217" class="h2">教师评分</text>
+  <text x="58" y="241" class="sub">两名教师独立评价终稿；下列为每维平均分</text>
+  <text x="58" y="292" class="body">新颖性</text>
+  <rect x="174" y="274" width="462" height="19" rx="9" fill="#E7EEEB"/>
+  <rect x="174" y="274" width="370" height="19" rx="9" fill="#0C4A4E"/>
+  <text x="663" y="294" class="score">4.0</text>
+  <text x="58" y="354" class="body">教育适切性</text>
+  <rect x="174" y="336" width="462" height="19" rx="9" fill="#E7EEEB"/>
+  <rect x="174" y="336" width="416" height="19" rx="9" fill="#0C4A4E"/>
+  <text x="663" y="356" class="score">4.5</text>
+  <text x="58" y="416" class="body">可实施性</text>
+  <rect x="174" y="398" width="462" height="19" rx="9" fill="#E7EEEB"/>
+  <rect x="174" y="398" width="323" height="19" rx="9" fill="#0C4A4E"/>
+  <text x="663" y="418" class="score">3.5</text>
+  <text x="58" y="448" class="sub">查看评分依据与两位教师评语 →</text>
+
+  <rect x="820" y="180" width="426" height="292" rx="14" fill="#FFFFFF" stroke="#DCE5E2"/>
+  <text x="844" y="217" class="h2">AI 辅助评价</text>
+  <rect x="844" y="233" width="156" height="27" rx="13" fill="#F8EEDD"/>
+  <text x="922" y="252" class="sub" fill="#8A5314" text-anchor="middle">辅助意见 · 非教师评分</text>
+  <text x="844" y="295" class="body">新颖性 4　适切性 4　可实施性 3</text>
+  <text x="844" y="331" class="sub">引用作品片段：</text>
+  <text x="844" y="356" class="body">“学生小组分别承担核验员与修订员……”</text>
+  <text x="844" y="391" class="sub">建议：补充活动结束时的个人反思方式。</text>
+  <text x="844" y="448" class="sub">查看模型与量规版本 →</text>
+
+  <rect x="34" y="488" width="594" height="294" rx="14" fill="#FFFFFF" stroke="#DCE5E2"/>
+  <text x="58" y="525" class="h2">从初始想法到终稿</text>
+  <text x="58" y="559" class="sub">初始想法</text>
+  <rect x="58" y="572" width="546" height="61" rx="8" fill="#F5F7F6"/>
+  <text x="74" y="601" class="body">让学生比较 AI 说法与可靠来源，并修订内容。</text>
+  <text x="58" y="669" class="sub">终稿新增的关键设计</text>
+  <rect x="58" y="682" width="546" height="62" rx="8" fill="#EAF3F1"/>
+  <text x="74" y="709" class="body">分组核验、证据记录卡、修订说明与同伴反馈。</text>
+  <text x="58" y="768" class="sub">查看完整作品版本 →</text>
+
+  <rect x="644" y="488" width="602" height="294" rx="14" fill="#FFFFFF" stroke="#DCE5E2"/>
+  <text x="668" y="525" class="h2">创作过程</text>
+  <path d="M686 560 V739" stroke="#B9D5CC" stroke-width="3"/>
+  <circle cx="686" cy="570" r="7" fill="#0C4A4E"/>
+  <text x="710" y="576" class="body">14:02　保存初始想法</text>
+  <circle cx="686" cy="624" r="7" fill="#0C4A4E"/>
+  <text x="710" y="630" class="body">14:09　询问 AI：如何组织核验活动？</text>
+  <circle cx="686" cy="678" r="7" fill="#0C4A4E"/>
+  <text x="710" y="684" class="body">14:13　修改后插入一条建议</text>
+  <circle cx="686" cy="732" r="7" fill="#0C4A4E"/>
+  <text x="710" y="738" class="body">14:27　提交最终方案</text>
+  <text x="668" y="768" class="sub">点击节点查看对应消息或版本 →</text>
+
+  <text x="34" y="831" class="sub">线框示意 · 示例数字与文本仅用于展示页面结构，不是真实研究结果</text>
+</svg>

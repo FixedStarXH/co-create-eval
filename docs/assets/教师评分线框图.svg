@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="820" viewBox="0 0 1280 820" fill="#182B30" role="img" aria-labelledby="title desc">
+  <title id="title">教师匿名评分页面线框图</title>
+  <desc id="desc">左侧为匿名终稿，右侧为三个维度的独立评分表；不显示创作条件或 AI 分数。</desc>
+  <defs>
+    <style>
+      text { font-family: "Noto Sans SC", "Microsoft YaHei", Arial, sans-serif; }
+      .title { font-size: 25px; font-weight: 700; }
+      .h2 { font-size: 18px; font-weight: 700; }
+      .body { font-size: 15px; }
+      .sub { font-size: 14px; fill: #52666B; }
+      .num { font-size: 16px; font-weight: 600; }
+    </style>
+  </defs>
+  <rect width="1280" height="820" fill="#F5F7F6"/>
+  <rect x="0" y="0" width="1280" height="72" fill="#FFFFFF"/>
+  <path d="M0 71.5 H1280" stroke="#DCE5E2"/>
+  <rect x="28" y="18" width="36" height="36" rx="10" fill="#0C4A4E"/>
+  <text x="46" y="43" font-size="22" font-weight="700" fill="#FFFFFF" text-anchor="middle">创</text>
+  <text x="76" y="45" class="h2">教师评分工作台</text>
+  <text x="1116" y="44" class="sub">待评 12 份 · 已评 8 份</text>
+
+  <text x="32" y="123" class="title">匿名作品 R-0187</text>
+  <text x="32" y="151" class="sub">任务 A：设计一节核验 AI 生成学习资料的课堂活动</text>
+  <rect x="1092" y="104" width="156" height="37" rx="18" fill="#E6F1EF"/>
+  <text x="1170" y="128" class="body" fill="#0C4A4E" text-anchor="middle">尚未提交评分</text>
+
+  <rect x="32" y="178" width="730" height="584" rx="14" fill="#FFFFFF" stroke="#DCE5E2"/>
+  <text x="56" y="216" class="h2">作品正文</text>
+  <text x="56" y="246" class="sub">以下是参与者提交的完整终稿</text>
+  <rect x="56" y="265" width="682" height="1" fill="#E7EEEB"/>
+  <text x="56" y="307" class="body">一、活动目标</text>
+  <path d="M56 330 H664 M56 356 H712" stroke="#E1E8E6" stroke-width="8" stroke-linecap="round"/>
+  <text x="56" y="409" class="body">二、学生任务</text>
+  <path d="M56 432 H701 M56 458 H644 M56 484 H687" stroke="#E1E8E6" stroke-width="8" stroke-linecap="round"/>
+  <text x="56" y="537" class="body">三、活动流程</text>
+  <path d="M56 560 H702 M56 586 H674 M56 612 H715 M56 638 H620" stroke="#E1E8E6" stroke-width="8" stroke-linecap="round"/>
+  <text x="56" y="706" class="sub">作品内容可滚动；无参与者身份、条件或 AI 分数</text>
+
+  <rect x="778" y="178" width="470" height="584" rx="14" fill="#FFFFFF" stroke="#DCE5E2"/>
+  <text x="802" y="216" class="h2">独立评分</text>
+  <text x="802" y="245" class="sub">每项 1—5 分，点击名称查看完整标准</text>
+
+  <text x="802" y="294" class="body">新颖性　ⓘ</text>
+  <rect x="802" y="307" width="48" height="42" rx="8" fill="#F5F7F6" stroke="#C9D7D3"/>
+  <rect x="860" y="307" width="48" height="42" rx="8" fill="#F5F7F6" stroke="#C9D7D3"/>
+  <rect x="918" y="307" width="48" height="42" rx="8" fill="#F5F7F6" stroke="#C9D7D3"/>
+  <rect x="976" y="307" width="48" height="42" rx="8" fill="#E6F1EF" stroke="#0C4A4E" stroke-width="2"/>
+  <rect x="1034" y="307" width="48" height="42" rx="8" fill="#F5F7F6" stroke="#C9D7D3"/>
+  <text x="826" y="335" class="num" text-anchor="middle">1</text><text x="884" y="335" class="num" text-anchor="middle">2</text><text x="942" y="335" class="num" text-anchor="middle">3</text><text x="1000" y="335" class="num" text-anchor="middle">4</text><text x="1058" y="335" class="num" text-anchor="middle">5</text>
+
+  <text x="802" y="393" class="body">教育适切性　ⓘ</text>
+  <rect x="802" y="406" width="48" height="42" rx="8" fill="#F5F7F6" stroke="#C9D7D3"/>
+  <rect x="860" y="406" width="48" height="42" rx="8" fill="#F5F7F6" stroke="#C9D7D3"/>
+  <rect x="918" y="406" width="48" height="42" rx="8" fill="#F5F7F6" stroke="#C9D7D3"/>
+  <rect x="976" y="406" width="48" height="42" rx="8" fill="#F5F7F6" stroke="#C9D7D3"/>
+  <rect x="1034" y="406" width="48" height="42" rx="8" fill="#F5F7F6" stroke="#C9D7D3"/>
+  <text x="826" y="434" class="num" text-anchor="middle">1</text><text x="884" y="434" class="num" text-anchor="middle">2</text><text x="942" y="434" class="num" text-anchor="middle">3</text><text x="1000" y="434" class="num" text-anchor="middle">4</text><text x="1058" y="434" class="num" text-anchor="middle">5</text>
+
+  <text x="802" y="492" class="body">可实施性　ⓘ</text>
+  <rect x="802" y="505" width="48" height="42" rx="8" fill="#F5F7F6" stroke="#C9D7D3"/>
+  <rect x="860" y="505" width="48" height="42" rx="8" fill="#F5F7F6" stroke="#C9D7D3"/>
+  <rect x="918" y="505" width="48" height="42" rx="8" fill="#F5F7F6" stroke="#C9D7D3"/>
+  <rect x="976" y="505" width="48" height="42" rx="8" fill="#F5F7F6" stroke="#C9D7D3"/>
+  <rect x="1034" y="505" width="48" height="42" rx="8" fill="#F5F7F6" stroke="#C9D7D3"/>
+  <text x="826" y="533" class="num" text-anchor="middle">1</text><text x="884" y="533" class="num" text-anchor="middle">2</text><text x="942" y="533" class="num" text-anchor="middle">3</text><text x="1000" y="533" class="num" text-anchor="middle">4</text><text x="1058" y="533" class="num" text-anchor="middle">5</text>
+
+  <text x="802" y="585" class="body">优点与改进建议</text>
+  <rect x="802" y="598" width="422" height="73" rx="8" fill="#FCFDFD" stroke="#C9D7D3"/>
+  <text x="818" y="626" class="sub">请输入具体评语…</text>
+  <rect x="802" y="694" width="167" height="42" rx="9" fill="#F2F6F5" stroke="#C9D7D3"/>
+  <text x="885" y="721" class="body" text-anchor="middle">保存评分草稿</text>
+  <rect x="982" y="694" width="242" height="42" rx="9" fill="#0C4A4E"/>
+  <text x="1103" y="721" class="body" fill="#FFFFFF" text-anchor="middle">确认提交并锁定</text>
+
+  <text x="32" y="799" class="sub">线框示意 · 选中状态仅为界面展示，不是真实评分</text>
+</svg>

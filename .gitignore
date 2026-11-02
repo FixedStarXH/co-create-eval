@@ -1,0 +1,37 @@
+# Dependencies and build output
+**/node_modules/
+**/.npm-cache/
+**/.npmrc
+**/dist/
+**/.vite/
+**/.venv/
+**/venv/
+**/__pycache__/
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+
+# Local secrets and databases
+.env
+.env.*
+!.env.example
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+**/data/
+**/exports/
+**/backups/
+
+# Local editor / agent state
+.vscode/
+.idea/
+.codex/
+.agents/
+.codegraph/
+**/AGENTS.md
+Thumbs.db
+.DS_Store
+*.log
