@@ -9,6 +9,8 @@
 - 管理员：运行概览、任务配置、参与进度和数据导出。
 - 创作工作台包含两场任务的界面差异、AI 示例对话、建议采纳、目标章节选择、章节编辑和作品预览。
 
+界面截图：[参与入口](qa-pages-entry.png) · [创作工作台](qa-pages-workbench.png) · [个人报告](qa-pages-report.png) · [教师评分](qa-pages-rating.png) · [管理页面](qa-pages-admin.png) · [手机页面](qa-pages-mobile.png)。
+
 ## 运行与检查
 
 ```bash
