@@ -1,6 +1,6 @@
 # 后端服务基础
 
-本模块使用 FastAPI、SQLModel 和 Alembic。当前提供健康检查、版本化任务、参与者凭证登录、演示版知情同意和两场任务分配；创作保存、真实 AI 与教师评分尚未实现。
+本模块使用 FastAPI、SQLModel 和 Alembic。当前提供健康检查、参与者凭证登录、演示版同意、任务分配、服务端阶段计时、构思和作品草稿、初稿与终稿快照；真实 AI、问卷和教师评分尚未实现。
 
 ## 本地运行
 
@@ -33,3 +33,5 @@ $env:APP_MODE = 'demo'
 支持 S1—S4，创建时固定分配两场任务。此工具只用于本地演示：任务版本为 `demo-1`，同意说明版本为 `demo-1`，正式采集前仍需正式的配置、同意文本与管理功能。重复编号不会覆盖已有记录。
 
 参与者登录使用 `POST /api/v1/auth/participant-login`；同意说明后可通过 `GET /api/v1/participant/sessions` 读取本人分配。服务端使用 HttpOnly 会话 Cookie、CSRF 校验和来源校验。生产环境须配置 HTTPS、`COOKIE_SECURE=true` 与实际 `FRONTEND_ORIGINS`，并在真实部署前完善账号管理和持久化限流。
+
+已登录的参与者可通过 `/api/v1/sessions/{id}/start` 启动首场，使用 `/progress` 读取服务端时间及草稿，通过 `/idea-draft`、`/initial`、`/draft`、`/submit` 保存和提交。草稿携带修订号，旧修订号返回 409。构思提前提交后等待阶段截止，作品截止后提供 30 秒传输宽限；阶段过期会在下次请求时推进，当前尚无独立后台定时任务。服务端清理作品富文本中的不安全标签。第二场须在第一场终稿提交后才能启动。

@@ -52,6 +52,12 @@ class StudySession(SQLModel, table=True):
     round_no: int = Field(nullable=False)
     condition: str = Field(max_length=16, nullable=False)
     state: str = Field(default="CREATED", max_length=16, nullable=False)
+    ideation_started_at: datetime | None = Field(default=None)
+    ideation_deadline_at: datetime | None = Field(default=None)
+    idea_submitted_at: datetime | None = Field(default=None)
+    development_started_at: datetime | None = Field(default=None)
+    development_deadline_at: datetime | None = Field(default=None)
+    submitted_at: datetime | None = Field(default=None)
 
 
 class AuthSession(SQLModel, table=True):
@@ -61,3 +67,30 @@ class AuthSession(SQLModel, table=True):
     token_hash: str = Field(max_length=64, nullable=False, unique=True)
     csrf_hash: str = Field(max_length=64, nullable=False)
     expires_at: datetime = Field(nullable=False)
+
+
+class IdeaDraft(SQLModel, table=True):
+    __tablename__ = "idea_draft"
+    session_id: str = Field(foreign_key="study_session.id", primary_key=True, max_length=36)
+    content_json: str = Field(default='["", "", ""]', nullable=False)
+    revision_no: int = Field(default=0, nullable=False)
+    saved_at: datetime | None = Field(default=None)
+
+
+class ArtifactDraft(SQLModel, table=True):
+    __tablename__ = "artifact_draft"
+    session_id: str = Field(foreign_key="study_session.id", primary_key=True, max_length=36)
+    content_json: str = Field(default="{}", nullable=False)
+    revision_no: int = Field(default=0, nullable=False)
+    saved_at: datetime | None = Field(default=None)
+
+
+class ArtifactVersion(SQLModel, table=True):
+    __tablename__ = "artifact_version"
+    __table_args__ = (UniqueConstraint("session_id", "stage", name="uq_session_version_stage"), CheckConstraint("stage IN ('INITIAL','FINAL')", name="ck_version_stage"))
+    id: str = Field(default_factory=lambda: str(uuid4()), primary_key=True, max_length=36)
+    session_id: str = Field(foreign_key="study_session.id", nullable=False, max_length=36, index=True)
+    stage: str = Field(nullable=False, max_length=16)
+    revision_no: int = Field(nullable=False)
+    content_json: str = Field(nullable=False)
+    created_at: datetime = Field(nullable=False)
