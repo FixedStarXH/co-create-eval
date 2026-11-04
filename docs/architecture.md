@@ -1,7 +1,7 @@
 # 项目结构与模块设计
 
 版本：V1.0（2026-11-02）  
-状态：目标工程结构；目录中的正式系统尚未创建  
+状态：目标工程结构；`backend/` 已建立服务基础、首个迁移和任务版本表，其余模块仍待实现<br>
 上位需求：[requirements.md](requirements.md)
 
 ## 1. 架构决策
@@ -28,7 +28,7 @@ flowchart LR
 
 ## 2. 目标目录树
 
-正式工程以 `co-create-eval/` 为根目录。以下是**目标结构**，不是当前已实现文件清单。
+正式工程以 `co-create-eval/` 为根目录。以下是**目标结构**，当前后端实现以 `backend/README.md` 和实际代码为准。
 
 ```text
 co-create-eval/
