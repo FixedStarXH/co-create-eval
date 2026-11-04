@@ -27,7 +27,7 @@ def test_readiness_requires_migration_and_persists_task(tmp_path, monkeypatch):
         migrate(monkeypatch, url)
         response = client.get("/api/v1/ready")
         assert response.status_code == 200
-        assert response.json()["revision"] == "0001_initial"
+        assert response.json()["revision"] == "0002_participant"
         with Session(app.state.engine) as session:
             session.add(TaskVersion(task_code="A", version="1", title="任务 A", scenario="情境", instructions="要求"))
             session.commit()

@@ -9,8 +9,9 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.config import database_url
 from app.db import build_engine
+from app.participant_api import router as participant_router
 
-EXPECTED_REVISION = "0001_initial"
+EXPECTED_REVISION = "0002_participant"
 
 
 def create_app(url: str | None = None) -> FastAPI:
@@ -23,6 +24,7 @@ def create_app(url: str | None = None) -> FastAPI:
 
     app = FastAPI(title="Co-create Eval API", version="0.1.0", lifespan=lifespan)
     app.state.engine = engine
+    app.include_router(participant_router)
 
     @app.get("/api/v1/health")
     def health():
