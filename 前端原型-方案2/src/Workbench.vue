@@ -20,7 +20,7 @@ import {
   PhX,
 } from '@phosphor-icons/vue'
 
-const props = defineProps<{ active: boolean; task: 'A' | 'B' }>()
+const props = defineProps<{ active: boolean; task: 'A' | 'B'; aiEnabled: boolean }>()
 const emit = defineEmits<{ back: []; continue: [sections: { label: string; title: string; html: string }[]] }>()
 
 type SectionId = 'goal' | 'student' | 'flow' | 'resource' | 'assessment'
@@ -98,8 +98,8 @@ const chatOpen = ref(false)
 const chatInput = ref('')
 const chatMessages = ref<{ role: 'user' | 'assistant'; text: string }[]>([])
 const previewOpen = ref(false)
-const originalSuggestion = '在“小组核验与信息查证”阶段增加具体的分工说明，例如设置“资料检索、信息比对、结论撰写、汇报准备”四个角色，以提高小组协作的清晰度。'
-const adoptText = ref(originalSuggestion)
+const originalSuggestion = computed(() => props.task === 'A' ? '在“小组核验与信息查证”阶段增加具体的分工说明，例如设置“资料检索、信息比对、结论撰写、汇报准备”四个角色，以提高小组协作的清晰度。' : '让学生分别从学习目标、可用时间和个人薄弱环节三个方面检查 AI 生成的复习计划，并解释调整依据。')
+const adoptText = ref(originalSuggestion.value)
 const toast = ref('')
 const previewCloseButton = ref<HTMLButtonElement | null>(null)
 const adoptTextarea = ref<HTMLTextAreaElement | null>(null)
@@ -199,7 +199,7 @@ function onPaste(event: ClipboardEvent) {
 async function openAdopt(mode: 'direct' | 'edit') {
   adoptMode.value = mode
   adoptTarget.value = activeId.value
-  adoptText.value = originalSuggestion
+  adoptText.value = originalSuggestion.value
   adoptOpen.value = true
   await nextTick()
   if (mode === 'edit') adoptTextarea.value?.focus()
@@ -362,7 +362,7 @@ onBeforeUnmount(() => {
       </section>
     </main>
 
-    <section v-if="task === 'A'" class="ai-dock" aria-label="AI 建议">
+    <section v-if="aiEnabled" class="ai-dock" aria-label="AI 建议">
       <div class="ai-dock-heading">
         <button class="dock-toggle" type="button" :aria-expanded="adviceExpanded" @click="adviceExpanded = !adviceExpanded">
           <strong>AI 建议</strong>
@@ -373,7 +373,7 @@ onBeforeUnmount(() => {
         <span v-if="!adviceExpanded" class="collapsed-note">点击展开，查看与当前作品相关的建议</span>
       </div>
       <div v-if="adviceExpanded" class="ai-dock-body">
-        <p v-if="suggestionState === 'pending'" class="suggestion-text">建议在“小组核验与信息查证”阶段增加更具体的分工说明，例如设置“资料检索 / 信息比对 / 结论撰写 / 汇报准备”四个角色，这样可以提升小组协作的清晰度，也更有利于保证 20 分钟内完成任务。</p>
+        <p v-if="suggestionState === 'pending'" class="suggestion-text">{{ originalSuggestion }}</p>
         <p v-else-if="suggestionState === 'adopted'" class="suggestion-result"><PhCheckCircle :size="18" />建议已由你确认加入作品；你仍可继续编辑。</p>
         <p v-else class="suggestion-result">你已忽略这条建议，作品内容没有变化。</p>
         <div class="ai-actions">

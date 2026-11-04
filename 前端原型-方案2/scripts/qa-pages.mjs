@@ -5,6 +5,9 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = fileURLToPath(new URL('../', import.meta.url))
+const qaCode = process.env.QA_STUDY_CODE
+const qaCredential = process.env.QA_CREDENTIAL
+if (!qaCode || !qaCredential) throw new Error('Set QA_STUDY_CODE and QA_CREDENTIAL for an S1 demo participant before running this check.')
 const profile = await mkdtemp(join(tmpdir(), 'creative-pages-'))
 const chrome = spawn('C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe', ['--headless=new', '--disable-gpu', '--no-first-run', '--remote-debugging-port=0', '--user-data-dir=' + profile, 'http://127.0.0.1:4173/'], { windowsHide: true, stdio: 'ignore' })
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
@@ -27,8 +30,10 @@ try {
   for (let i = 0; i < 40; i++) { if (await evaluate("Boolean(document.querySelector('.portal'))")) break; await wait(200) }
   await screenshot('qa-pages-entry.png')
   await click('同意并继续'); record('参与编号必填', await evaluate("document.querySelector('.form-error')?.textContent.includes('编号')"))
-  await evaluate("document.querySelector('#study-code').value='P001';document.querySelector('#study-code').dispatchEvent(new Event('input',{bubbles:true}));document.querySelector('.consent-line input').click()")
-  await click('同意并继续'); record('进入任务说明', await evaluate("document.querySelector('.portal h1')?.textContent.includes('了解你的创作任务')"))
+  await evaluate(`(() => { const a=document.querySelector('#study-code'), b=document.querySelector('#credential'); a.value=${JSON.stringify(qaCode)};a.dispatchEvent(new Event('input',{bubbles:true}));b.value=${JSON.stringify(qaCredential)};b.dispatchEvent(new Event('input',{bubbles:true}));document.querySelector('.consent-line input').click() })()`)
+  await evaluate("(() => { const x=document.querySelector('#credential');x.value='incorrect-test-credential';x.dispatchEvent(new Event('input',{bubbles:true})) })()"); await click('同意并继续'); await wait(500); record('错误凭证提示', await evaluate("document.querySelector('.form-error')?.textContent.includes('不正确')")); await evaluate(`(() => { const x=document.querySelector('#credential');x.value=${JSON.stringify(qaCredential)};x.dispatchEvent(new Event('input',{bubbles:true})) })()`)
+  await click('同意并继续'); await wait(800); record('进入任务说明', await evaluate("document.querySelector('.portal h1')?.textContent.includes('了解你的创作任务')"))
+  await send('Page.reload', { ignoreCache: true }); await wait(1200); record('刷新恢复参与者会话', await evaluate("document.querySelector('.portal h1')?.textContent.includes('了解你的创作任务')"))
   await click('我已理解'); record('进入独立构思', await evaluate("document.querySelector('.portal h1')?.textContent.includes('先写下你的想法')"))
   await click('保存想法'); record('进入创作工作台', await evaluate("document.querySelector('.app-shell').offsetParent !== null")); await screenshot('qa-pages-workbench.png')
   await click('提出问题'); await evaluate("(() => { const x=document.querySelector('#chat-input-A');x.value='如何组织学生讨论？';x.dispatchEvent(new Event('input',{bubbles:true})) })()"); await click('发送'); record('AI 对话示例', await evaluate("document.querySelector('.chat-history')?.textContent.includes('示例回复')")); await click('收起对话')
@@ -57,7 +62,8 @@ try {
     await click('页面导航'); await click(name)
     record('手机页面：' + name, await evaluate("document.documentElement.scrollWidth <= innerWidth && document.querySelector('.portal').scrollWidth <= innerWidth"))
   }
-  await click('页面导航'); await click('创作工作台'); record('手机工作台布局', await evaluate("document.documentElement.scrollWidth <= innerWidth")); await click('返回构思')
+  await click('页面导航'); await click('创作工作台'); record('手机工作台布局', await evaluate("document.documentElement.scrollWidth <= innerWidth")); await click('返回构思'); await click('退出登录'); record('参与者退出登录', await evaluate("document.querySelector('.portal h1')?.textContent.includes('欢迎参与创作') && !document.querySelector('#study-code').value"))
+  await evaluate(`(() => { const a=document.querySelector('#study-code'), b=document.querySelector('#credential'); a.value=${JSON.stringify(qaCode)};a.dispatchEvent(new Event('input',{bubbles:true}));b.value=${JSON.stringify(qaCredential)};b.dispatchEvent(new Event('input',{bubbles:true}));document.querySelector('.consent-line input').click() })()`); await click('同意并继续'); await wait(800); await click('页面导航'); await click('创作工作台'); record('重新登录清除上一轮预览内容', await evaluate("!document.querySelector('.app-shell .rich-editor')?.textContent.includes('界面测试标记')"))
   record('浏览器运行错误', errors.length === 0)
   console.log(JSON.stringify({ checks, errors }, null, 2)); if (checks.some(x => !x.passed)) process.exitCode = 1
 } catch (e) { console.error(e); process.exitCode = 1 } finally { if (socket) socket.close(); chrome.kill() }
