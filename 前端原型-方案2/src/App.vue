@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { PhArrowLeft, PhArrowRight, PhCheck, PhCheckCircle, PhClock, PhDownloadSimple, PhFileText, PhInfo, PhListChecks, PhLockKey, PhSignOut, PhSparkle, PhUsers } from '@phosphor-icons/vue'
 import Workbench from './Workbench.vue'
-import { participantApi, type Assignment } from './participant-api'
+import { participantApi, type Assignment, type Progress } from './participant-api'
+import { useDraftSaver } from './draft-saver'
 import './portal.css'
 
 type Page = 'join' | 'task' | 'idea' | 'work' | 'submit' | 'survey' | 'break' | 'report' | 'staff' | 'teacher' | 'rating' | 'admin'
@@ -13,7 +14,22 @@ const previewNav = ref(false)
 const studyCode = ref('')
 const credential = ref('')
 const entryLoading = ref(false)
+const phaseBusy = ref(false)
 const assignment = ref<Assignment | null>(null)
+const assignments = ref<Assignment[]>([])
+const progress = ref<Progress | null>(null)
+const currentSession = computed(() => assignments.value.find(item => item.round_no === round.value))
+const liveWork = computed(() => Boolean(currentSession.value && progress.value?.id === currentSession.value.id && ['DEVELOPMENT', 'SUBMITTED'].includes(progress.value.state)))
+const workRevision = ref(0)
+const clockTick = ref(Date.now())
+const clockOffset = ref(0)
+const ideaRemaining = computed(() => progress.value?.ideation_deadline_at ? Math.max(0, Math.ceil((Date.parse(progress.value.ideation_deadline_at) - clockTick.value - clockOffset.value) / 1000)) : 300)
+const ideaTimeLabel = computed(() => `${String(Math.floor(ideaRemaining.value / 60)).padStart(2, '0')}:${String(ideaRemaining.value % 60).padStart(2, '0')}`)
+const ideaLocked = computed(() => Boolean(progress.value?.idea_submitted_at || (progress.value && progress.value.state !== 'IDEATION') || ideaRemaining.value <= 0))
+let hydratingIdea = false
+let pollTimer: number | undefined
+let clockTimer: number | undefined
+let polling = false
 const csrfToken = ref('')
 const previewEpoch = ref(0)
 const consent = ref(false)
@@ -22,6 +38,8 @@ const staffName = ref('')
 const staffPassword = ref('')
 const error = ref('')
 const ideas = ref(['', '', ''])
+const ideaSaver = useDraftSaver<string[]>(() => ideas.value, (revision, values) => participantApi.saveIdea(currentSession.value!.id, csrfToken.value, revision, values))
+watch(ideas, () => { if (!hydratingIdea && progress.value?.state === 'IDEATION' && !ideaLocked.value && currentSession.value?.id === progress.value.id) ideaSaver.changed() }, { deep: true, flush: 'sync' })
 const sections = ref<Section[]>([])
 const reports = ref<Record<1 | 2, Section[]>>({ 1: [], 2: [] })
 const reportRound = ref<1 | 2>(1)
@@ -61,33 +79,82 @@ const dimensions = [
   { name: '教育适切性', hint: '目标、学生参与、学习产出与评价是否相互对应。' },
   { name: '可实施性', hint: '步骤、时间与资源是否清晰，能否在普通学校条件下实施。' },
 ]
-function go(next: Page) { page.value = next; error.value = ''; previewNav.value = false; nextTick(() => document.querySelector('.portal')?.scrollTo(0, 0)) }
-async function loadAssignment() { const sessions = await participantApi.sessions(); const first = sessions.find(item => item.round_no === 1); if (!first?.task_code || !first.condition) throw new Error('未找到已分配的任务，请联系管理员。'); assignment.value = first }
-function clearPreviewState() { previewEpoch.value += 1; assignment.value = null; round.value = 1; ideas.value = ['', '', '']; sections.value = []; reports.value = { 1: [], 2: [] }; reportRound.value = 1; survey.value = [0, 0, 0, 0, 0, 0]; submitted.value = false }
+function go(next: Page) {
+  const navigate = () => { page.value = next; error.value = ''; previewNav.value = false; nextTick(() => document.querySelector('.portal')?.scrollTo(0, 0)) }
+  if (page.value === 'idea' && assignment.value && ideaSaver.status.value !== 'saved') { void ideaSaver.flush().then(ok => { if (ok) navigate(); else error.value = ideaSaver.error.value }); return }
+  navigate()
+}
+async function loadAssignment(restoreRound = false) { const sessions = await participantApi.sessions(); const first = sessions.find(item => item.round_no === 1); if (!first?.task_code || !first.condition) throw new Error('未找到已分配的任务，请联系管理员。'); assignments.value = sessions; assignment.value = first; if (restoreRound) { const second = sessions.find(item => item.round_no === 2); round.value = second && second.state !== 'CREATED' ? 2 : 1 } }
+function clearPreviewState() { previewEpoch.value += 1; assignment.value = null; assignments.value = []; progress.value = null; round.value = 1; hydratingIdea = true; ideas.value = ['', '', '']; hydratingIdea = false; ideaSaver.reset(0); sections.value = []; reports.value = { 1: [], 2: [] }; reportRound.value = 1; survey.value = [0, 0, 0, 0, 0, 0]; submitted.value = false }
+function applyProgress(value: Progress, restore = false) {
+  progress.value = value; clockOffset.value = Date.parse(value.server_time) - Date.now(); clockTick.value = Date.now()
+  if (restore && value.idea) { hydratingIdea = true; ideas.value = value.idea.values; hydratingIdea = false; ideaSaver.reset(value.idea.revision) }
+}
+function sectionsFromDraft(value: Progress): Section[] { const labels = [['goal','目标','1. 活动目标'], ['student','学生任务','2. 学生任务'], ['flow','活动流程','3. 活动流程与时间分配'], ['resource','资源','4. 材料与工具'], ['assessment','评价','5. 评价方式']] as const; return labels.map(([id, label, title]) => ({ label, title, html: value.draft?.sections[id] ?? '' })) }
+async function restoreSession() {
+  if (!currentSession.value) return
+  const value = await participantApi.progress(currentSession.value.id); applyProgress(value, true)
+  if (value.state === 'IDEATION') go('idea')
+  else if (value.state === 'DEVELOPMENT') go('work')
+  else if (value.state === 'SUBMITTED') { sections.value = sectionsFromDraft(value); reports.value[round.value] = sections.value.map(section => ({ ...section })); submitted.value = true; go('survey') }
+  else if (value.state === 'EXPIRED') { go('task'); error.value = '本场任务已结束且没有已保存的作品。' }
+  else go('task')
+}
+async function beginIdeation() {
+  if (!assignment.value || !currentSession.value) { go('idea'); return }
+  if (phaseBusy.value) return
+  phaseBusy.value = true
+  try { const value = await participantApi.start(currentSession.value.id, csrfToken.value); applyProgress(value, true); if (value.state === 'IDEATION') go('idea'); else if (value.state === 'DEVELOPMENT') go('work'); else if (value.state === 'SUBMITTED') { sections.value = sectionsFromDraft(value); submitted.value = true; go('survey') } else error.value = '本场任务已结束。' }
+  catch (e) { error.value = e instanceof Error ? e.message : '无法开始任务' }
+  finally { phaseBusy.value = false }
+}
+async function finishIdea() {
+  if (!assignment.value || !currentSession.value || !progress.value) { go('work'); return }
+  if (progress.value.state === 'DEVELOPMENT') { go('work'); return }
+  if (progress.value.idea_submitted_at) return
+  if (phaseBusy.value) return
+  phaseBusy.value = true
+  try {
+  if (!(await ideaSaver.flush())) { error.value = ideaSaver.error.value; return }
+  const value = await participantApi.submitIdea(currentSession.value.id, csrfToken.value, ideaSaver.revision.value); applyProgress(value); if (value.state === 'DEVELOPMENT') go('work')
+  }
+  catch (e) { error.value = e instanceof Error ? e.message : '提交失败' }
+  finally { phaseBusy.value = false }
+}
+function continueAfterUnsavedIdea() { if (window.confirm('未保存的构思不会写入初稿。请先复制需要保留的内容，确定继续吗？')) { ideaSaver.reset(ideaSaver.revision.value); go('work') } }
+async function pollProgress() {
+  if (!currentSession.value || !assignment.value || !['idea', 'work', 'submit'].includes(page.value) || polling) return
+  polling = true
+  try { const value = await participantApi.progress(currentSession.value.id); applyProgress(value); if (page.value === 'idea' && value.state === 'DEVELOPMENT' && ideaSaver.status.value === 'saved') go('work') }
+  catch { /* Keep locally edited content and retry on the next poll. */ }
+  finally { polling = false }
+}
 async function enter() {
   if (!studyCode.value.trim()) { error.value = '请输入参与编号'; return }
   if (!credential.value) { error.value = '请输入访问凭证'; return }
   if (!consent.value) { error.value = '请阅读并确认同意后继续'; return }
   entryLoading.value = true; error.value = ''
-  try { const identity = await participantApi.login(studyCode.value, credential.value); clearPreviewState(); csrfToken.value = identity.csrf_token; await participantApi.consent(identity.csrf_token); await loadAssignment(); studyCode.value = identity.study_code; credential.value = ''; go('task') }
+  try { const identity = await participantApi.login(studyCode.value, credential.value); clearPreviewState(); csrfToken.value = identity.csrf_token; await participantApi.consent(identity.csrf_token); await loadAssignment(true); studyCode.value = identity.study_code; credential.value = ''; await restoreSession() }
   catch (e) { error.value = e instanceof Error ? e.message : '登录失败，请稍后再试。' }
   finally { entryLoading.value = false }
 }
-onMounted(async () => { try { const identity = await participantApi.me(); if (identity.consented) { studyCode.value = identity.study_code; csrfToken.value = identity.csrf_token; await loadAssignment(); go('task') } } catch { /* No valid saved session; show entry. */ } })
-async function participantLogout() { try { await participantApi.logout(csrfToken.value); clearPreviewState(); csrfToken.value = ''; studyCode.value = ''; credential.value = ''; consent.value = false; go('join') } catch (e) { flash(e instanceof Error ? e.message : '退出失败，请稍后再试。') } }
+function warnUnsaved(event: BeforeUnloadEvent) { if (page.value === 'idea' && assignment.value && ideaSaver.status.value !== 'saved') { event.preventDefault(); event.returnValue = '' } }
+onMounted(async () => { window.addEventListener('beforeunload', warnUnsaved); clockTimer = window.setInterval(() => { clockTick.value = Date.now() }, 1000); pollTimer = window.setInterval(() => { void pollProgress() }, 3000); try { const identity = await participantApi.me(); if (identity.consented) { studyCode.value = identity.study_code; csrfToken.value = identity.csrf_token; await loadAssignment(true); await restoreSession() } } catch { /* No valid saved session; show entry. */ } })
+onBeforeUnmount(() => { window.removeEventListener('beforeunload', warnUnsaved); if (clockTimer) clearInterval(clockTimer); if (pollTimer) clearInterval(pollTimer) })
+async function participantLogout() { if (page.value === 'idea' && !(await ideaSaver.flush())) { error.value = ideaSaver.error.value; return }; try { await participantApi.logout(csrfToken.value); clearPreviewState(); csrfToken.value = ''; studyCode.value = ''; credential.value = ''; consent.value = false; go('join') } catch (e) { flash(e instanceof Error ? e.message : '退出失败，请稍后再试。') } }
 function staffLogin() { if (!staffName.value.trim() || !staffPassword.value) { error.value = '请输入账号和密码'; return }; go(staffRole.value) }
-function continueFromWorkbench(value: Section[]) { sections.value = value; go('submit') }
+function continueFromWorkbench(value: Section[], revision: number) { sections.value = value; workRevision.value = revision; go('submit') }
 function submitSurvey() { if (survey.value.slice(0, activeQuestions.value.length).some(v => !v)) { error.value = '请先回答所有题目'; return }; reportRound.value = round.value; go(round.value === 1 ? 'break' : 'report') }
-function startSecond() { round.value = 2; ideas.value = ['', '', '']; survey.value = [0, 0, 0, 0, 0, 0]; sections.value = []; submitted.value = false; go('task') }
-function submitWork() { reports.value[round.value] = sections.value.map(section => ({ ...section })); submitted.value = true; go('survey') }
+async function startSecond() { if (assignment.value) { try { await loadAssignment(); if (!assignments.value.find(item => item.round_no === 2)?.task_code) throw new Error('请先完成第一场作品提交。') } catch (e) { flash(e instanceof Error ? e.message : '无法进入第二场'); return } }; round.value = 2; progress.value = null; hydratingIdea = true; ideas.value = ['', '', '']; hydratingIdea = false; ideaSaver.reset(0); survey.value = [0, 0, 0, 0, 0, 0]; sections.value = []; submitted.value = false; if (assignment.value) await restoreSession(); else go('task') }
+async function submitWork() { if (phaseBusy.value) return; phaseBusy.value = true; try { if (liveWork.value && currentSession.value) { await participantApi.submit(currentSession.value.id, csrfToken.value, workRevision.value); const saved = await participantApi.progress(currentSession.value.id); applyProgress(saved); sections.value = sectionsFromDraft(saved); await loadAssignment() }; reports.value[round.value] = sections.value.map(section => ({ ...section })); submitted.value = true; go('survey') } catch (e) { error.value = e instanceof Error ? e.message : '提交失败' } finally { phaseBusy.value = false } }
 function submitRating() { if (scores.value.some(v => !v) || !strengths.value.trim() || !improvements.value.trim()) { error.value = '请完成三个维度的评分，并填写优点和改进建议。'; return }; ratingSubmitted.value = true; error.value = ''; notice.value = '评分已在本次预览中提交'; }
 function flash(message: string) { notice.value = message; window.setTimeout(() => { notice.value = '' }, 3000) }
 function printReport() { window.print() }
 </script>
 
 <template>
-  <Workbench :key="'A-' + previewEpoch" v-show="page === 'work' && activeTask === 'A'" :active="page === 'work' && activeTask === 'A'" :ai-enabled="aiEnabled" task="A" @back="go('idea')" @continue="continueFromWorkbench" />
-  <Workbench :key="'B-' + previewEpoch" v-show="page === 'work' && activeTask === 'B'" :active="page === 'work' && activeTask === 'B'" :ai-enabled="aiEnabled" task="B" @back="go('idea')" @continue="continueFromWorkbench" />
+  <Workbench :key="'A-' + previewEpoch" v-show="page === 'work' && activeTask === 'A'" :active="page === 'work' && activeTask === 'A'" :ai-enabled="aiEnabled" :session-id="liveWork ? currentSession?.id : undefined" :csrf="csrfToken" :initial-draft="progress?.draft" :deadline="progress?.development_deadline_at" :server-time="progress?.server_time" task="A" @back="go('idea')" @continue="continueFromWorkbench" />
+  <Workbench :key="'B-' + previewEpoch" v-show="page === 'work' && activeTask === 'B'" :active="page === 'work' && activeTask === 'B'" :ai-enabled="aiEnabled" :session-id="liveWork ? currentSession?.id : undefined" :csrf="csrfToken" :initial-draft="progress?.draft" :deadline="progress?.development_deadline_at" :server-time="progress?.server_time" task="B" @back="go('idea')" @continue="continueFromWorkbench" />
   <div v-if="page !== 'work'" class="portal">
     <header class="portal-header">
       <button class="portal-brand" type="button" @click="go('join')"><span class="portal-logo"><PhFileText :size="21" weight="fill" /></span><span>人机协同创造力评测系统</span></button>
@@ -117,14 +184,14 @@ function printReport() { window.print() }
 
     <main v-else-if="page === 'task'" class="page-container">
       <div class="eyebrow"><span class="eyebrow-line"></span> 任务说明 <span class="eyebrow-index">02 / 05</span></div><div class="page-title-block page-title-row"><div><h1>了解你的创作任务</h1><p>阅读任务情境与要求，准备好后再开始计时。</p></div><span class="outlined-tag">{{ round === 1 ? "第一场" : "第二场" }} · 任务 {{ activeTask }}</span></div>
-      <div v-if="assignment" class="notice-strip"><PhInfo :size="19" /><span>编号、同意记录与任务分配已连接服务；创作、评分和 AI 暂为界面预览。</span></div><div class="task-layout"><section class="surface task-main"><div class="surface-heading"><div><span class="section-kicker">THE BRIEF</span><h2>{{ activeTask === "A" ? "核验 AI 生成的学习资料" : "评价 AI 生成的学习建议" }}</h2></div><span class="task-id">TASK {{ activeTask }}</span></div><p class="lead-copy">为高一学生设计一节 40 分钟的 AI 素养课堂活动。</p><h3>情境</h3><p>{{ activeTask === "A" ? "学生经常使用生成式 AI 搜集知识。有时 AI 给出的解释看起来完整，却可能混入错误事实或缺少来源。学校希望帮助学生形成核验 AI 生成资料的习惯。" : "学生使用生成式 AI 制作复习计划，但计划可能忽略个人薄弱环节、时间安排或实际条件。学校希望帮助学生判断和调整 AI 生成的学习建议。" }}</p><h3>你的任务</h3><p>{{ activeTask === "A" ? "设计一项让学生接触可能存在问题的 AI 资料、提出核验办法，并根据核验结果修订资料的课堂活动。" : "设计一项让学生判断 AI 学习建议是否适合具体情况，并根据学习需求改进建议的课堂活动。" }}</p><div class="rule-box"><strong>设计时请注意</strong><ul><li>让学生提出自己的判断，而不只是听教师讲解。</li><li>活动方法应适合普通学校的资源条件。</li><li>教师应能看到学生的判断依据和修订结果。</li></ul></div></section><aside class="task-aside"><section class="surface aside-card"><span class="section-kicker">YOUR OUTPUT</span><h2>你需要提交</h2><ol class="output-list"><li><span>01</span>活动目标</li><li><span>02</span>学生任务</li><li><span>03</span>活动流程与时间</li><li><span>04</span>材料与工具</li><li><span>05</span>评价方式</li></ol></section><section class="surface aside-card"><span class="section-kicker">TIME PLAN</span><h2>任务安排</h2><div class="time-row"><span>独立构思</span><strong>05 <small>分钟</small></strong></div><div class="time-row"><span>完善作品</span><strong>20 <small>分钟</small></strong></div><p class="muted-note">点击开始后进入构思阶段，请尽量一次完成。</p></section></aside></div><div class="page-actions"><button class="action-secondary" type="button" @click="go('join')"><PhArrowLeft :size="16" /> 返回</button><button class="action-primary" type="button" @click="go('idea')">我已理解，开始构思 <PhArrowRight :size="16" /></button></div>
+      <div v-if="assignment" class="notice-strip"><PhInfo :size="19" /><span>登录、计时和作品保存已连接服务；问卷、评分和 AI 仍为界面预览。</span></div><div class="task-layout"><section class="surface task-main"><div class="surface-heading"><div><span class="section-kicker">THE BRIEF</span><h2>{{ activeTask === "A" ? "核验 AI 生成的学习资料" : "评价 AI 生成的学习建议" }}</h2></div><span class="task-id">TASK {{ activeTask }}</span></div><p class="lead-copy">为高一学生设计一节 40 分钟的 AI 素养课堂活动。</p><h3>情境</h3><p>{{ activeTask === "A" ? "学生经常使用生成式 AI 搜集知识。有时 AI 给出的解释看起来完整，却可能混入错误事实或缺少来源。学校希望帮助学生形成核验 AI 生成资料的习惯。" : "学生使用生成式 AI 制作复习计划，但计划可能忽略个人薄弱环节、时间安排或实际条件。学校希望帮助学生判断和调整 AI 生成的学习建议。" }}</p><h3>你的任务</h3><p>{{ activeTask === "A" ? "设计一项让学生接触可能存在问题的 AI 资料、提出核验办法，并根据核验结果修订资料的课堂活动。" : "设计一项让学生判断 AI 学习建议是否适合具体情况，并根据学习需求改进建议的课堂活动。" }}</p><div class="rule-box"><strong>设计时请注意</strong><ul><li>让学生提出自己的判断，而不只是听教师讲解。</li><li>活动方法应适合普通学校的资源条件。</li><li>教师应能看到学生的判断依据和修订结果。</li></ul></div></section><aside class="task-aside"><section class="surface aside-card"><span class="section-kicker">YOUR OUTPUT</span><h2>你需要提交</h2><ol class="output-list"><li><span>01</span>活动目标</li><li><span>02</span>学生任务</li><li><span>03</span>活动流程与时间</li><li><span>04</span>材料与工具</li><li><span>05</span>评价方式</li></ol></section><section class="surface aside-card"><span class="section-kicker">TIME PLAN</span><h2>任务安排</h2><div class="time-row"><span>独立构思</span><strong>05 <small>分钟</small></strong></div><div class="time-row"><span>完善作品</span><strong>20 <small>分钟</small></strong></div><p class="muted-note">点击开始后进入构思阶段，请尽量一次完成。</p></section></aside></div><p v-if="error" class="form-error" role="alert">{{ error }}</p><div class="page-actions"><button class="action-secondary" type="button" @click="go('join')"><PhArrowLeft :size="16" /> 返回</button><button class="action-primary" type="button" :disabled="phaseBusy" @click="beginIdeation">我已理解，开始构思 <PhArrowRight :size="16" /></button></div>
     </main>
 
-    <main v-else-if="page === 'idea'" class="page-container medium-page"><div class="eyebrow"><span class="eyebrow-line"></span> 独立构思 <span class="eyebrow-index">03 / 05</span></div><div class="page-title-block page-title-row"><div><h1>先写下你的想法</h1><p>不用追求完整，记录你最初的判断与设计方向。</p></div><div class="time-pill"><PhClock :size="18" /><span>剩余时间</span><strong>05:00</strong></div></div><div class="notice-strip"><PhInfo :size="19" /><span>这一阶段请先独立思考。后续可以继续完善这些想法。</span></div><section class="surface idea-card"><div v-for="(question, index) in ['我想解决的关键问题是什么？', '我准备让学生做什么？', '我怎样判断学习活动是否有效？']" :key="question" class="idea-field"><label :for="'idea-' + index"><span>{{ String(index + 1).padStart(2, '0') }}</span>{{ question }}</label><p>{{ ['例如：学生如何判断 AI 资料是否可信。', '写下你想到的核心活动或学生任务。', '可以考虑学生的可见成果和教师的观察方式。'][index] }}</p><textarea :id="'idea-' + index" v-model="ideas[index]" rows="3" placeholder="在这里记录你的初步想法…"></textarea></div></section><div class="page-actions"><button class="action-secondary" type="button" @click="go('task')"><PhArrowLeft :size="16" /> 返回任务</button><div class="action-group"><span class="save-hint">想法仅在当前预览中保留</span><button class="action-primary" type="button" @click="go('work')">保存想法，进入完善 <PhArrowRight :size="16" /></button></div></div></main>
+    <main v-else-if="page === 'idea'" class="page-container medium-page"><div class="eyebrow"><span class="eyebrow-line"></span> 独立构思 <span class="eyebrow-index">03 / 05</span></div><div class="page-title-block page-title-row"><div><h1>先写下你的想法</h1><p>不用追求完整，记录你最初的判断与设计方向。</p></div><div class="time-pill"><PhClock :size="18" /><span>剩余时间</span><strong>{{ assignment ? ideaTimeLabel : "05:00" }}</strong></div></div><div class="notice-strip"><PhInfo :size="19" /><span>{{ progress?.idea_submitted_at && progress.state === "IDEATION" ? "初始构思已提交，请等待本阶段结束。" : progress?.state === "DEVELOPMENT" ? "构思阶段已结束，可以继续完善作品。" : "这一阶段请先独立思考。后续可以继续完善这些想法。" }}</span></div><section class="surface idea-card"><div v-for="(question, index) in ['我想解决的关键问题是什么？', '我准备让学生做什么？', '我怎样判断学习活动是否有效？']" :key="question" class="idea-field"><label :for="'idea-' + index"><span>{{ String(index + 1).padStart(2, '0') }}</span>{{ question }}</label><p>{{ ['例如：学生如何判断 AI 资料是否可信。', '写下你想到的核心活动或学生任务。', '可以考虑学生的可见成果和教师的观察方式。'][index] }}</p><textarea :id="'idea-' + index" v-model="ideas[index]" :readonly="!!assignment && ideaLocked" rows="3" placeholder="在这里记录你的初步想法…"></textarea></div></section><p v-if="error || ideaSaver.error.value" class="form-error" role="alert">{{ error || ideaSaver.error.value }}。如果阶段已结束，请先复制未保存的内容。</p><div class="page-actions"><button class="action-secondary" type="button" @click="go('task')"><PhArrowLeft :size="16" /> 返回任务</button><div class="action-group"><span class="save-hint">{{ !assignment ? "想法仅在当前预览中保留" : ideaSaver.status.value === "saving" ? "保存中…" : ideaSaver.status.value === "unsaved" ? "待保存" : ideaSaver.status.value === "error" ? "保存失败" : "已保存" }}</span><button v-if="assignment && ideaSaver.status.value === 'error' && !ideaLocked" class="action-secondary" type="button" @click="ideaSaver.flush()">重试保存</button><button v-if="assignment && progress?.state === 'DEVELOPMENT' && ideaSaver.status.value === 'error'" class="action-secondary" type="button" @click="continueAfterUnsavedIdea">已复制，继续</button><button class="action-primary" type="button" :disabled="phaseBusy || (!!assignment && !!progress?.idea_submitted_at && progress.state === 'IDEATION')" @click="finishIdea">{{ progress?.state === "DEVELOPMENT" ? "继续完善作品" : progress?.idea_submitted_at ? "等待阶段结束" : "保存并提交构思" }} <PhArrowRight :size="16" /></button></div></div></main>
 
-    <main v-else-if="page === 'submit'" class="page-container medium-page"><div class="eyebrow"><span class="eyebrow-line"></span> 提交作品 <span class="eyebrow-index">04 / 05</span></div><div class="page-title-block"><h1>检查并提交作品</h1><p>提交前请确认五个部分。正式系统中，提交后作品将被锁定。</p></div><div class="notice-strip"><PhInfo :size="19" /><span>当前为界面预览，展示的是本次编辑内容；提交不会发送到服务器。</span></div><section class="surface final-preview"><div class="surface-heading"><div><span class="section-kicker">FINAL REVIEW</span><h2>课堂活动方案</h2></div><span class="outlined-tag">任务 {{ activeTask }}</span></div><template v-if="sections.length"><section v-for="section in sections" :key="section.label" class="final-section"><h3>{{ section.title }}</h3><div class="preview-html" v-html="section.html"></div></section></template><div v-else class="empty-state">从创作工作台进入后，这里会展示五个章节的内容。<button class="inline-link" type="button" @click="go('work')">前往创作工作台</button></div></section><div class="page-actions"><button class="action-secondary" type="button" @click="go('work')"><PhArrowLeft :size="16" /> 返回修改</button><button class="action-primary" type="button" @click="submitWork">确认提交，填写问卷 <PhArrowRight :size="16" /></button></div></main>
+    <main v-else-if="page === 'submit'" class="page-container medium-page"><div class="eyebrow"><span class="eyebrow-line"></span> 提交作品 <span class="eyebrow-index">04 / 05</span></div><div class="page-title-block"><h1>检查并提交作品</h1><p>提交前请确认五个部分。正式系统中，提交后作品将被锁定。</p></div><div class="notice-strip"><PhInfo :size="19" /><span>{{ liveWork ? "确认后作品将保存到服务器并锁定，提交后不能继续修改。" : "当前为界面预览，展示的是本次编辑内容；提交不会发送到服务器。" }}</span></div><section class="surface final-preview"><div class="surface-heading"><div><span class="section-kicker">FINAL REVIEW</span><h2>课堂活动方案</h2></div><span class="outlined-tag">任务 {{ activeTask }}</span></div><template v-if="sections.length"><section v-for="section in sections" :key="section.label" class="final-section"><h3>{{ section.title }}</h3><div class="preview-html" v-html="section.html"></div></section></template><div v-else class="empty-state">从创作工作台进入后，这里会展示五个章节的内容。<button class="inline-link" type="button" @click="go('work')">前往创作工作台</button></div></section><p v-if="error" class="form-error" role="alert">{{ error }}</p><div class="page-actions"><button class="action-secondary" type="button" @click="go('work')"><PhArrowLeft :size="16" /> 返回修改</button><button class="action-primary" type="button" :disabled="phaseBusy" @click="submitWork">确认提交，填写问卷 <PhArrowRight :size="16" /></button></div></main>
 
-    <main v-else-if="page === 'survey'" class="page-container medium-page"><div class="eyebrow"><span class="eyebrow-line"></span> 体验反馈 <span class="eyebrow-index">04 / 05</span></div><div class="page-title-block"><h1>分享你的使用体验</h1><p>请根据刚才的任务选择符合你感受的选项。没有对错之分。</p></div><div v-if="submitted" class="success-strip"><PhCheckCircle :size="20" /> 作品已进入提交预览，接下来请完成问卷。</div><section class="surface survey-card"><div class="survey-scale"><span>1　非常不同意</span><span>5　非常同意</span></div><div v-for="(question, index) in activeQuestions" :key="question" class="survey-question"><div><span class="question-number">{{ String(index + 1).padStart(2, '0') }}</span><strong>{{ question }}</strong><small v-if="index === 5">AI 协同场次</small></div><fieldset :aria-label="question"><label v-for="n in 5" :key="n" :class="{ selected: survey[index] === n }"><input v-model="survey[index]" type="radio" :name="'survey-' + index" :value="n" />{{ n }}</label></fieldset></div></section><p v-if="error" class="form-error" role="alert">{{ error }}</p><div class="page-actions"><button class="action-secondary" type="button" @click="go('submit')"><PhArrowLeft :size="16" /> 返回</button><button class="action-primary" type="button" @click="submitSurvey">提交反馈 <PhArrowRight :size="16" /></button></div></main>
+    <main v-else-if="page === 'survey'" class="page-container medium-page"><div class="eyebrow"><span class="eyebrow-line"></span> 体验反馈 <span class="eyebrow-index">04 / 05</span></div><div class="page-title-block"><h1>分享你的使用体验</h1><p>请根据刚才的任务选择符合你感受的选项。没有对错之分。</p></div><div v-if="submitted" class="success-strip"><PhCheckCircle :size="20" /> {{ progress?.state === "SUBMITTED" ? "作品已提交；问卷目前仅供界面预览。" : "作品已进入提交预览，接下来请完成问卷。" }}</div><section class="surface survey-card"><div class="survey-scale"><span>1　非常不同意</span><span>5　非常同意</span></div><div v-for="(question, index) in activeQuestions" :key="question" class="survey-question"><div><span class="question-number">{{ String(index + 1).padStart(2, '0') }}</span><strong>{{ question }}</strong><small v-if="index === 5">AI 协同场次</small></div><fieldset :aria-label="question"><label v-for="n in 5" :key="n" :class="{ selected: survey[index] === n }"><input v-model="survey[index]" type="radio" :name="'survey-' + index" :value="n" />{{ n }}</label></fieldset></div></section><p v-if="error" class="form-error" role="alert">{{ error }}</p><div class="page-actions"><button class="action-secondary" type="button" @click="go('submit')"><PhArrowLeft :size="16" /> 返回</button><button class="action-primary" type="button" @click="submitSurvey">提交反馈 <PhArrowRight :size="16" /></button></div></main>
 
     <main v-else-if="page === 'break'" class="page-container narrow-page"><section class="surface break-card"><span class="completion-icon"><PhCheckCircle :size="34" /></span><span class="section-kicker">SESSION COMPLETE</span><h1>第一场任务已完成</h1><p>你已经完成了第一场创作和体验反馈。可以休息片刻，再开始下一场任务。</p><div class="break-summary"><div><span>第一场</span><strong>任务 {{ taskForRound(1) }}</strong><small>已完成</small></div><span class="summary-line"></span><div><span>第二场</span><strong>任务 {{ taskForRound(2) }}</strong><small>待开始</small></div></div><button class="action-primary" type="button" @click="go('report')">查看本场报告 <PhArrowRight :size="16" /></button><button class="inline-link" type="button" @click="startSecond">准备开始第二场</button></section></main>
 

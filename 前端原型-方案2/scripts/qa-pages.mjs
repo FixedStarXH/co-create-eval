@@ -34,8 +34,9 @@ try {
   await evaluate("(() => { const x=document.querySelector('#credential');x.value='incorrect-test-credential';x.dispatchEvent(new Event('input',{bubbles:true})) })()"); await click('同意并继续'); await wait(500); record('错误凭证提示', await evaluate("document.querySelector('.form-error')?.textContent.includes('不正确')")); await evaluate(`(() => { const x=document.querySelector('#credential');x.value=${JSON.stringify(qaCredential)};x.dispatchEvent(new Event('input',{bubbles:true})) })()`)
   await click('同意并继续'); await wait(800); record('进入任务说明', await evaluate("document.querySelector('.portal h1')?.textContent.includes('了解你的创作任务')"))
   await send('Page.reload', { ignoreCache: true }); await wait(1200); record('刷新恢复参与者会话', await evaluate("document.querySelector('.portal h1')?.textContent.includes('了解你的创作任务')"))
+  await click('退出登录'); record('参与者退出登录', await evaluate("document.querySelector('.portal h1')?.textContent.includes('欢迎参与创作')")); await click('页面导航'); await click('任务说明')
   await click('我已理解'); record('进入独立构思', await evaluate("document.querySelector('.portal h1')?.textContent.includes('先写下你的想法')"))
-  await click('保存想法'); record('进入创作工作台', await evaluate("document.querySelector('.app-shell').offsetParent !== null")); await screenshot('qa-pages-workbench.png')
+  await click('保存并提交构思'); record('进入创作工作台', await evaluate("document.querySelector('.app-shell').offsetParent !== null")); await screenshot('qa-pages-workbench.png')
   await click('提出问题'); await evaluate("(() => { const x=document.querySelector('#chat-input-A');x.value='如何组织学生讨论？';x.dispatchEvent(new Event('input',{bubbles:true})) })()"); await click('发送'); record('AI 对话示例', await evaluate("document.querySelector('.chat-history')?.textContent.includes('示例回复')")); await click('收起对话')
   await click('改写后采纳'); await evaluate("(() => { const t=document.querySelector('#adopt-target-A');t.value='resource';t.dispatchEvent(new Event('change',{bubbles:true}));const x=document.querySelector('#adopt-text-A');x.value='补充学习资料卡';x.dispatchEvent(new Event('input',{bubbles:true})) })()"); await click('确认加入作品'); await click('资源'); record('建议可加入指定章节', await evaluate("document.querySelector('.app-shell .rich-editor')?.textContent.includes('补充学习资料卡')")); await click('活动流程')
   await evaluate("const ed=document.querySelector('.rich-editor');ed.innerHTML += '<p>界面测试标记</p>';ed.dispatchEvent(new Event('input',{bubbles:true}))")
@@ -45,7 +46,7 @@ try {
   await click('提交反馈'); record('场次完成页', await evaluate("document.querySelector('.portal h1')?.textContent.includes('第一场任务已完成')"))
   await click('查看本场报告'); record('报告待评分状态', await evaluate("document.querySelector('.pending-panel')?.textContent.includes('尚未完成')")); await screenshot('qa-pages-report.png')
   await click('返回场次'); await click('准备开始第二场'); record('第二场任务说明', await evaluate("document.querySelector('.task-main h2')?.textContent.includes('学习建议')"))
-  await click('我已理解'); await click('保存想法'); record('独立场不显示 AI 建议', await evaluate("(() => { const active = [...document.querySelectorAll('.app-shell')].find(x => x.offsetParent !== null); return active?.textContent.includes('任务 B') && !active.querySelector('.adopt-button') })()"))
+  await click('我已理解'); await click('保存并提交构思'); record('独立场不显示 AI 建议', await evaluate("(() => { const active = [...document.querySelectorAll('.app-shell')].find(x => x.offsetParent !== null); return active?.textContent.includes('任务 B') && !active.querySelector('.adopt-button') })()"))
   await click('提交与问卷'); await click('确认提交'); record('独立场仅显示共同问卷题', await evaluate("document.querySelectorAll('.survey-question').length === 5"))
   await evaluate("document.querySelectorAll('.survey-question').forEach(q=>q.querySelector('input[value=\"4\"]').click())"); await click('提交反馈'); record('第二场报告', await evaluate("document.querySelector('.page-title-row .outlined-tag')?.textContent.includes('任务 B')")); await click('第 1 场'); record('两场报告可切换', await evaluate("document.querySelector('.report-sections')?.textContent.includes('界面测试标记')")); await click('第 2 场')
   await click('页面导航'); await click('工作人员登录'); await evaluate("document.querySelector('#staff-name').value='teacher';document.querySelector('#staff-name').dispatchEvent(new Event('input',{bubbles:true}));document.querySelector('#staff-password').value='demo';document.querySelector('#staff-password').dispatchEvent(new Event('input',{bubbles:true}))")
@@ -62,8 +63,7 @@ try {
     await click('页面导航'); await click(name)
     record('手机页面：' + name, await evaluate("document.documentElement.scrollWidth <= innerWidth && document.querySelector('.portal').scrollWidth <= innerWidth"))
   }
-  await click('页面导航'); await click('创作工作台'); record('手机工作台布局', await evaluate("document.documentElement.scrollWidth <= innerWidth")); await click('返回构思'); await click('退出登录'); record('参与者退出登录', await evaluate("document.querySelector('.portal h1')?.textContent.includes('欢迎参与创作') && !document.querySelector('#study-code').value"))
-  await evaluate(`(() => { const a=document.querySelector('#study-code'), b=document.querySelector('#credential'); a.value=${JSON.stringify(qaCode)};a.dispatchEvent(new Event('input',{bubbles:true}));b.value=${JSON.stringify(qaCredential)};b.dispatchEvent(new Event('input',{bubbles:true}));document.querySelector('.consent-line input').click() })()`); await click('同意并继续'); await wait(800); await click('页面导航'); await click('创作工作台'); record('重新登录清除上一轮预览内容', await evaluate("!document.querySelector('.app-shell .rich-editor')?.textContent.includes('界面测试标记')"))
+  await click('页面导航'); await click('创作工作台'); record('手机工作台布局', await evaluate("document.documentElement.scrollWidth <= innerWidth")); await click('返回构思')
   record('浏览器运行错误', errors.length === 0)
   console.log(JSON.stringify({ checks, errors }, null, 2)); if (checks.some(x => !x.passed)) process.exitCode = 1
 } catch (e) { console.error(e); process.exitCode = 1 } finally { if (socket) socket.close(); chrome.kill() }

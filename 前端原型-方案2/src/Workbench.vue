@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { participantApi, type DraftContent, type Progress } from './participant-api'
+import { useDraftSaver } from './draft-saver'
 import {
   PhArrowUUpLeft,
   PhArrowUUpRight,
@@ -20,8 +22,8 @@ import {
   PhX,
 } from '@phosphor-icons/vue'
 
-const props = defineProps<{ active: boolean; task: 'A' | 'B'; aiEnabled: boolean }>()
-const emit = defineEmits<{ back: []; continue: [sections: { label: string; title: string; html: string }[]] }>()
+const props = defineProps<{ active: boolean; task: 'A' | 'B'; aiEnabled: boolean; sessionId?: string; csrf?: string; initialDraft?: Progress['draft']; deadline?: string | null; serverTime?: string }>()
+const emit = defineEmits<{ back: []; continue: [sections: { label: string; title: string; html: string }[], revision: number] }>()
 
 type SectionId = 'goal' | 'student' | 'flow' | 'resource' | 'assessment'
 type SaveState = 'saved' | 'saving'
@@ -87,6 +89,10 @@ const activeId = ref<SectionId>('flow')
 const activeSection = computed(() => sections.value.find((section) => section.id === activeId.value)!)
 const editor = ref<HTMLDivElement | null>(null)
 const saveState = ref<SaveState>('saved')
+const saver = useDraftSaver<DraftContent>(() => Object.fromEntries(sections.value.map(section => [section.id, section.html])) as DraftContent, (revision, value) => participantApi.saveDraft(props.sessionId!, props.csrf!, revision, value))
+const displayedSaveState = computed(() => props.sessionId ? saver.status.value : saveState.value)
+let loadedSession = ''
+let serverOffset = 0
 const remainingSeconds = ref(18 * 60 + 42)
 const taskExpanded = ref(false)
 const adviceExpanded = ref(true)
@@ -134,6 +140,7 @@ function captureEditor() {
 }
 
 function queueSave() {
+  if (props.sessionId) { saver.changed(); return }
   saveState.value = 'saving'
   if (saveTimer) window.clearTimeout(saveTimer)
   saveTimer = window.setTimeout(() => { saveState.value = 'saved' }, 900)
@@ -144,11 +151,30 @@ function onEditorInput() {
   queueSave()
 }
 
-function saveDraft() {
+async function saveDraft() {
   captureEditor()
+  if (props.sessionId) {
+    if (await saver.flush()) showToast('草稿已保存')
+    else showToast(saver.error.value)
+    return
+  }
   queueSave()
   showToast('草稿已在本页暂存（演示状态）')
 }
+
+async function leaveWorkbench() { captureEditor(); if (!props.sessionId || await saver.flush()) emit('back'); else showToast(saver.error.value) }
+async function continueWorkbench() { captureEditor(); if (props.sessionId && !(await saver.flush())) { showToast(saver.error.value); return }; emit('continue', sections.value.map(({ label, title, html }) => ({ label, title, html })), saver.revision.value) }
+
+watch(() => [props.active, props.sessionId, props.initialDraft] as const, async ([active, id, draft]) => {
+  if (active && id && draft && loadedSession !== id) {
+    sections.value = sections.value.map(section => ({ ...section, html: draft.sections[section.id] ?? '' }))
+    saver.reset(draft.revision)
+    loadedSession = id
+    await nextTick()
+    renderEditor()
+  }
+}, { immediate: true })
+watch(() => props.serverTime, value => { if (value) serverOffset = Date.parse(value) - Date.now() }, { immediate: true })
 
 async function setSection(id: SectionId) {
   if (id === activeId.value) return
@@ -159,6 +185,7 @@ async function setSection(id: SectionId) {
 }
 
 function format(command: string) {
+  if (props.sessionId && remainingSeconds.value <= 0) return
   editor.value?.focus()
   document.execCommand(command, false)
   onEditorInput()
@@ -197,6 +224,7 @@ function onPaste(event: ClipboardEvent) {
 }
 
 async function openAdopt(mode: 'direct' | 'edit') {
+  if (props.sessionId && remainingSeconds.value <= 0) return
   adoptMode.value = mode
   adoptTarget.value = activeId.value
   adoptText.value = originalSuggestion.value
@@ -248,17 +276,22 @@ function onGlobalKeydown(event: KeyboardEvent) {
     previewOpen.value = false
   }
 }
+function warnUnsaved(event: BeforeUnloadEvent) { if (props.active && props.sessionId && saver.status.value !== 'saved') { event.preventDefault(); event.returnValue = '' } }
 
 onMounted(() => {
   renderEditor()
   countdownTimer = window.setInterval(() => {
-    if (props.active && remainingSeconds.value > 0) remainingSeconds.value -= 1
+    if (!props.active) return
+    if (props.sessionId && props.deadline) remainingSeconds.value = Math.max(0, Math.ceil((Date.parse(props.deadline) - Date.now() - serverOffset) / 1000))
+    else if (remainingSeconds.value > 0) remainingSeconds.value -= 1
     if (remainingSeconds.value === 0 && countdownTimer) {
+      if (props.sessionId) { void saver.flush(); showToast('创作时间已结束，正在保存最后的修改') }
+      else showToast('演示计时已结束；原型不会自动提交')
       window.clearInterval(countdownTimer)
-      showToast('演示计时已结束；原型不会自动提交')
     }
   }, 1000)
   window.addEventListener('keydown', onGlobalKeydown)
+  window.addEventListener('beforeunload', warnUnsaved)
 })
 
 onBeforeUnmount(() => {
@@ -266,6 +299,7 @@ onBeforeUnmount(() => {
   if (countdownTimer) window.clearInterval(countdownTimer)
   if (toastTimer) window.clearTimeout(toastTimer)
   window.removeEventListener('keydown', onGlobalKeydown)
+  window.removeEventListener('beforeunload', warnUnsaved)
 })
 </script>
 
@@ -279,13 +313,13 @@ onBeforeUnmount(() => {
         <span class="header-context">任务 {{ task }} · 完善作品</span>
       </div>
       <div class="header-status">
-        <button class="text-button" type="button" @click="emit('back')">返回构思</button>
+        <button class="text-button" type="button" @click="leaveWorkbench">返回构思</button>
         <span class="timer" role="timer" aria-label="剩余时间">剩余 {{ timeLabel }}</span>
-        <span class="status-dot" :class="{ saving: saveState === 'saving' }" aria-hidden="true"></span>
-        <span class="save-label" role="status" :title="'演示状态；刷新页面后不会保留编辑内容'">{{ saveState === 'saving' ? '保存中…' : '已保存' }}</span>
+        <span class="status-dot" :class="{ saving: displayedSaveState !== 'saved' }" aria-hidden="true"></span>
+        <span class="save-label" role="status" :title="sessionId ? saver.error.value : '演示状态；刷新页面后不会保留编辑内容'">{{ displayedSaveState === 'saving' ? '保存中…' : displayedSaveState === 'unsaved' ? '待保存' : displayedSaveState === 'error' ? '保存失败，请重试' : '已保存' }}</span>
         <button class="text-button save-button" type="button" @click="saveDraft"><PhFloppyDisk :size="16" />保存草稿</button>
         <button class="preview-button" type="button" @click="openPreview"><PhEye :size="18" />预览作品</button>
-        <button class="preview-button" type="button" @click="captureEditor(); emit('continue', sections.map(({ label, title, html }) => ({ label, title, html })))">提交与问卷</button>
+        <button class="preview-button" type="button" @click="continueWorkbench">提交与问卷</button>
       </div>
     </header>
 
@@ -353,7 +387,7 @@ onBeforeUnmount(() => {
           <button type="button" class="tool-button" aria-label="重做" title="重做" @mousedown.prevent @click="format('redo')"><PhArrowUUpRight :size="18" /></button>
         </div>
         <div class="editor-scroll">
-          <div ref="editor" class="rich-editor" contenteditable="true" role="textbox" aria-multiline="true" :aria-label="activeSection.title" spellcheck="true" @input="onEditorInput" @paste="onPaste"></div>
+          <div ref="editor" class="rich-editor" :contenteditable="!sessionId || remainingSeconds > 0" role="textbox" aria-multiline="true" :aria-label="activeSection.title" spellcheck="true" @input="onEditorInput" @paste="onPaste"></div>
         </div>
         <div class="editor-footer">
           <span>当前章节 {{ characterCount }} 字</span>
@@ -365,7 +399,7 @@ onBeforeUnmount(() => {
     <section v-if="aiEnabled" class="ai-dock" aria-label="AI 建议">
       <div class="ai-dock-heading">
         <button class="dock-toggle" type="button" :aria-expanded="adviceExpanded" @click="adviceExpanded = !adviceExpanded">
-          <strong>AI 建议</strong>
+          <strong>AI 建议 · 示例</strong>
           <PhCaretUp v-if="adviceExpanded" :size="16" />
           <PhCaretDown v-else :size="16" />
         </button>
@@ -416,7 +450,7 @@ onBeforeUnmount(() => {
           </div>
           <button ref="previewCloseButton" class="modal-close" type="button" aria-label="关闭预览" @click="previewOpen = false"><PhX :size="20" /></button>
         </div>
-        <p class="preview-intro">这是目前五个章节的内容预览。此演示原型不会提交作品或连接真实评分服务。</p>
+        <p class="preview-intro">{{ sessionId ? '这是目前五个章节的预览。确认提交前，你仍可返回编辑。' : '这是目前五个章节的内容预览。此演示原型不会提交作品或连接真实评分服务。' }}</p>
         <div class="preview-content">
           <section v-for="section in sections" :key="section.id">
             <h3>{{ section.title }}</h3>

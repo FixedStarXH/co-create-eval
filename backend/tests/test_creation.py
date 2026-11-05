@@ -58,6 +58,7 @@ def test_timed_creation_and_revision_conflict(setup):
     assert final.status_code == 200
     assert client.post(f'/api/v1/sessions/{first}/submit', headers=headers, json={'expected_revision':1}).json() == final.json()
     assert client.put(f'/api/v1/sessions/{first}/draft', headers=headers, json={'expected_revision':1,'sections':sections}).status_code == 409
+    assert client.get('/api/v1/participant/sessions').json()['data'][1]['task_code'] == 'B'
     with Session(app.state.engine) as db:
         snapshots = db.exec(select(ArtifactVersion).where(ArtifactVersion.session_id == first)).all()
         assert {x.stage for x in snapshots} == {'INITIAL', 'FINAL'} and len(snapshots) == 2

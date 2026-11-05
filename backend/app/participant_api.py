@@ -109,10 +109,11 @@ def sessions(identity = Depends(current), db: Session = Depends(session_db)):
     if not participant.consented_at:
         raise HTTPException(403, "请先确认参与说明")
     rows = db.exec(select(StudySession).where(StudySession.participant_id == participant.id).order_by(StudySession.round_no)).all()
+    first_complete = any(row.round_no == 1 and row.state in ("SUBMITTED", "RATED") for row in rows)
     result = []
     for row in rows:
         item = {"id": row.id, "round_no": row.round_no, "state": row.state}
-        if row.round_no == 1:
+        if row.round_no == 1 or first_complete:
             task = db.get(TaskVersion, row.task_version_id)
             item.update({"task_code": task.task_code, "task_title": task.title, "condition": row.condition})
         result.append(item)
