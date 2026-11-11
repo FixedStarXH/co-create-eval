@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { participantApi, type DraftContent, type Progress } from './participant-api'
+import { participantApi, type ChatRequest, type DraftContent, type Progress } from './participant-api'
 import { useDraftSaver } from './draft-saver'
 import {
   PhArrowUUpLeft,
@@ -103,6 +103,15 @@ const adoptTarget = ref<SectionId>('flow')
 const chatOpen = ref(false)
 const chatInput = ref('')
 const chatMessages = ref<{ role: 'user' | 'assistant'; text: string }[]>([])
+const chatHistory = ref<ChatRequest[]>([])
+const chatLoading = ref(false)
+const chatSending = ref(false)
+const chatError = ref('')
+const chatAcknowledged = ref(false)
+const chatPending = computed(() => chatHistory.value.some(item => item.status === 'PENDING'))
+let chatSession = ''
+let chatTimer: number | undefined
+let retryRequest: { id: string; message: string } | null = null
 const previewOpen = ref(false)
 const originalSuggestion = computed(() => props.task === 'A' ? '在“小组核验与信息查证”阶段增加具体的分工说明，例如设置“资料检索、信息比对、结论撰写、汇报准备”四个角色，以提高小组协作的清晰度。' : '让学生分别从学习目标、可用时间和个人薄弱环节三个方面检查 AI 生成的复习计划，并解释调整依据。')
 const adoptText = ref(originalSuggestion.value)
@@ -175,6 +184,28 @@ watch(() => [props.active, props.sessionId, props.initialDraft] as const, async 
   }
 }, { immediate: true })
 watch(() => props.serverTime, value => { if (value) serverOffset = Date.parse(value) - Date.now() }, { immediate: true })
+watch(() => [props.active, props.sessionId, props.aiEnabled] as const, ([active, id, enabled]) => {
+  if (active && id && enabled && chatSession !== id) {
+    chatSession = id; chatHistory.value = []; chatInput.value = ''; chatError.value = ''; chatAcknowledged.value = false; retryRequest = null
+    void loadChat(id)
+  }
+}, { immediate: true })
+
+async function loadChat(id = props.sessionId, quiet = false) {
+  if (!id) return
+  if (!quiet) chatLoading.value = true
+  try {
+    const rows = await participantApi.chatHistory(id)
+    if (chatSession === id) {
+      chatHistory.value = rows; chatError.value = ''
+      if (retryRequest && rows.some(row => row.client_request_id === retryRequest?.id)) {
+        if (chatInput.value.trim() === retryRequest.message) chatInput.value = ''
+        retryRequest = null
+      }
+    }
+  } catch (e) { if (chatSession === id) chatError.value = e instanceof Error ? e.message : '对话记录加载失败' }
+  finally { if (chatSession === id && !quiet) chatLoading.value = false }
+}
 
 async function setSection(id: SectionId) {
   if (id === activeId.value) return
@@ -240,6 +271,21 @@ function sendDemoMessage() {
   chatInput.value = ''
 }
 
+async function sendChat() {
+  if (!props.sessionId) { sendDemoMessage(); return }
+  const id = props.sessionId
+  const question = chatInput.value.trim()
+  if (!question || !chatAcknowledged.value || chatSending.value || chatPending.value || remainingSeconds.value <= 0) return
+  if (!retryRequest || retryRequest.message !== question) retryRequest = { id: crypto.randomUUID(), message: question }
+  chatSending.value = true; chatError.value = ''
+  try {
+    await participantApi.sendChat(id, props.csrf!, retryRequest.id, question)
+    if (chatSession === id) { chatInput.value = ''; retryRequest = null; await loadChat(id, true) }
+  } catch (e) {
+    if (chatSession === id) chatError.value = (e instanceof Error ? e.message : '发送失败') + '。你可以保留问题并重试。'
+  } finally { if (chatSession === id) chatSending.value = false }
+}
+
 async function confirmAdopt() {
   const value = adoptText.value.trim()
   if (!value) {
@@ -292,12 +338,14 @@ onMounted(() => {
   }, 1000)
   window.addEventListener('keydown', onGlobalKeydown)
   window.addEventListener('beforeunload', warnUnsaved)
+  chatTimer = window.setInterval(() => { if (props.active && props.sessionId && chatOpen.value && chatPending.value) void loadChat(props.sessionId, true) }, 3000)
 })
 
 onBeforeUnmount(() => {
   if (saveTimer) window.clearTimeout(saveTimer)
   if (countdownTimer) window.clearInterval(countdownTimer)
   if (toastTimer) window.clearTimeout(toastTimer)
+  if (chatTimer) window.clearInterval(chatTimer)
   window.removeEventListener('keydown', onGlobalKeydown)
   window.removeEventListener('beforeunload', warnUnsaved)
 })
@@ -399,14 +447,15 @@ onBeforeUnmount(() => {
     <section v-if="aiEnabled" class="ai-dock" aria-label="AI 建议">
       <div class="ai-dock-heading">
         <button class="dock-toggle" type="button" :aria-expanded="adviceExpanded" @click="adviceExpanded = !adviceExpanded">
-          <strong>AI 建议 · 示例</strong>
+          <strong>{{ sessionId ? 'AI 协作' : 'AI 建议 · 示例' }}</strong>
           <PhCaretUp v-if="adviceExpanded" :size="16" />
           <PhCaretDown v-else :size="16" />
         </button>
         <button class="chat-toggle" type="button" @click="chatOpen = !chatOpen">{{ chatOpen ? '收起对话' : '提出问题' }}</button>
         <span v-if="!adviceExpanded" class="collapsed-note">点击展开，查看与当前作品相关的建议</span>
       </div>
-      <div v-if="adviceExpanded" class="ai-dock-body">
+      <div v-if="adviceExpanded && sessionId" class="ai-dock-body"><p class="suggestion-text">在对话区提出问题，回复由你自行判断；模型内容不会自动加入作品。</p></div>
+      <div v-else-if="adviceExpanded" class="ai-dock-body">
         <p v-if="suggestionState === 'pending'" class="suggestion-text">{{ originalSuggestion }}</p>
         <p v-else-if="suggestionState === 'adopted'" class="suggestion-result"><PhCheckCircle :size="18" />建议已由你确认加入作品；你仍可继续编辑。</p>
         <p v-else class="suggestion-result">你已忽略这条建议，作品内容没有变化。</p>
@@ -419,7 +468,24 @@ onBeforeUnmount(() => {
           <button v-else class="ignore-button" type="button" @click="suggestionState = 'pending'">重新查看建议</button>
         </div>
       </div>
-      <div v-if="chatOpen" class="chat-panel"><div class="chat-panel-head"><strong>与 AI 讨论</strong><span>示例对话 · 尚未连接模型</span></div><div class="chat-history"><p v-if="!chatMessages.length">可以询问如何完善活动步骤、学生任务或评价方式。</p><div v-for="(message, index) in chatMessages" :key="index" :class="['chat-message', message.role]"><strong>{{ message.role === 'user' ? '你' : 'AI · 示例' }}</strong><span>{{ message.text }}</span></div></div><form class="chat-form" @submit.prevent="sendDemoMessage"><label class="sr-only" :for="'chat-input-' + task">向 AI 提问</label><input :id="'chat-input-' + task" v-model="chatInput" placeholder="例如：如何让学生说明判断依据？" /><button class="adopt-button" type="submit" :disabled="!chatInput.trim()">发送</button></form></div>
+      <div v-if="chatOpen" class="chat-panel">
+        <div class="chat-panel-head"><strong>与 AI 讨论</strong><span>{{ sessionId ? '回复仅供参考，请自行核验' : '示例对话 · 尚未连接模型' }}</span></div>
+        <div class="chat-history" aria-live="polite">
+          <p v-if="sessionId && chatLoading">正在加载对话记录…</p>
+          <template v-else-if="sessionId">
+            <p v-if="!chatHistory.length">可以询问如何完善活动步骤、学生任务或评价方式。</p>
+            <template v-for="item in chatHistory" :key="item.id">
+              <div class="chat-message user"><strong>你</strong><span>{{ item.message }}</span></div>
+              <div class="chat-message assistant"><strong>AI</strong><span>{{ item.status === 'PENDING' ? '正在回复…' : item.status === 'FAILED' ? '本次回复未成功，请重新提问；作品不受影响。' : item.reply }}</span></div>
+            </template>
+          </template>
+          <template v-else><p v-if="!chatMessages.length">可以询问如何完善活动步骤、学生任务或评价方式。</p><div v-for="(message, index) in chatMessages" :key="index" :class="['chat-message', message.role]"><strong>{{ message.role === 'user' ? '你' : 'AI · 示例' }}</strong><span>{{ message.text }}</span></div></template>
+        </div>
+        <p v-if="chatError" class="chat-error" role="alert">{{ chatError }} <button type="button" class="chat-reload" @click="loadChat()">刷新记录</button></p>
+        <label v-if="sessionId" class="chat-consent"><input v-model="chatAcknowledged" type="checkbox" /> 我了解所提问题和必要的任务信息会发送给第三方模型服务，请勿输入个人敏感信息。</label>
+        <form class="chat-form" @submit.prevent="sendChat"><label class="sr-only" :for="'chat-input-' + task">向 AI 提问</label><input :id="'chat-input-' + task" v-model="chatInput" maxlength="2000" placeholder="例如：如何让学生说明判断依据？" /><button class="adopt-button" type="submit" :disabled="!chatInput.trim() || chatSending || (!!sessionId && (!chatAcknowledged || chatPending || remainingSeconds <= 0))">{{ chatSending || (sessionId && chatPending) ? '等待回复' : '发送' }}</button></form>
+        <p v-if="sessionId && remainingSeconds <= 0" class="chat-note">创作时间已结束，不能再发起对话。</p>
+      </div>
     </section>
     <section v-else class="ai-dock" aria-label="任务提示"><div class="ai-dock-heading"><strong>任务提示</strong></div><p class="suggestion-text">请独立完善方案，并结合学习情境说明判断依据与修改结果。</p></section>
 
