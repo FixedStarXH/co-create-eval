@@ -94,3 +94,23 @@ class ArtifactVersion(SQLModel, table=True):
     revision_no: int = Field(nullable=False)
     content_json: str = Field(nullable=False)
     created_at: datetime = Field(nullable=False)
+
+
+class ChatRequest(SQLModel, table=True):
+    __tablename__ = "chat_request"
+    __table_args__ = (
+        UniqueConstraint("session_id", "client_request_id", name="uq_chat_client_request"),
+        CheckConstraint("status IN ('PENDING','SUCCEEDED','FAILED')", name="ck_chat_status"),
+    )
+    id: str = Field(default_factory=lambda: str(uuid4()), primary_key=True, max_length=36)
+    session_id: str = Field(foreign_key="study_session.id", nullable=False, max_length=36, index=True)
+    client_request_id: str = Field(nullable=False, max_length=36)
+    question: str = Field(nullable=False)
+    reply: str | None = Field(default=None)
+    status: str = Field(default="PENDING", nullable=False, max_length=16)
+    model: str = Field(nullable=False, max_length=200)
+    prompt_version: str = Field(nullable=False, max_length=32)
+    provider_request_id: str | None = Field(default=None, max_length=200)
+    error_code: str | None = Field(default=None, max_length=40)
+    created_at: datetime = Field(nullable=False)
+    completed_at: datetime | None = Field(default=None)

@@ -11,8 +11,9 @@ from app.config import database_url
 from app.db import build_engine
 from app.participant_api import router as participant_router
 from app.creation_api import router as creation_router
+from app.chat_api import router as chat_router
 
-EXPECTED_REVISION = "0003_creation"
+EXPECTED_REVISION = "0004_chat"
 
 
 def create_app(url: str | None = None) -> FastAPI:
@@ -27,6 +28,7 @@ def create_app(url: str | None = None) -> FastAPI:
     app.state.engine = engine
     app.include_router(participant_router)
     app.include_router(creation_router)
+    app.include_router(chat_router)
 
     @app.get("/api/v1/health")
     def health():
