@@ -12,7 +12,7 @@ def test_provider_sends_chat_and_extracts_response():
 
     def send(request, timeout):
         assert request.get_header("Authorization") == "Bearer secret-key"
-        assert json.loads(request.data) == {"model": "test-model", "messages": messages, "stream": False}
+        assert json.loads(request.data) == {"model": "test-model", "messages": messages, "stream": False, "max_tokens": 1024}
         assert timeout == 30
         return json.dumps({"choices": [{"message": {"content": "建议"}}]}).encode(), "req-1"
 
@@ -58,5 +58,25 @@ def test_environment_requires_secure_complete_configuration(monkeypatch):
     monkeypatch.setenv("AI_CHAT_ENDPOINT", "https://example.com/v1/chat/completions")
     assert ModelConfig.from_environment().model == "model"
     monkeypatch.setenv("AI_TIMEOUT_SECONDS", "nan")
+    with pytest.raises(ModelError, match="invalid_configuration"):
+        ModelConfig.from_environment()
+
+
+def test_deepseek_output_settings(monkeypatch):
+    monkeypatch.setenv("AI_CHAT_ENDPOINT", "https://api.deepseek.com/chat/completions")
+    monkeypatch.setenv("AI_CHAT_MODEL", "deepseek-flash")
+    monkeypatch.setenv("AI_API_KEY", "secret")
+    monkeypatch.setenv("AI_MAX_OUTPUT_TOKENS", "512")
+    monkeypatch.setenv("AI_DEEPSEEK_NON_THINKING", "true")
+    config = ModelConfig.from_environment()
+    def send(request, _timeout):
+        data = json.loads(request.data)
+        assert data['max_tokens'] == 512 and data['thinking'] == {'type': 'disabled'}
+        return b'{"choices":[{"message":{"content":"ok"}}]}', None
+    assert CompatibleChatProvider(config, send).generate_chat([{'role':'user','content':'hello'}]).text == 'ok'
+    monkeypatch.setenv("AI_CHAT_ENDPOINT", "https://other.example/chat/completions")
+    with pytest.raises(ModelError, match="invalid_configuration"):
+        ModelConfig.from_environment()
+    monkeypatch.setenv("AI_MAX_OUTPUT_TOKENS", "4097")
     with pytest.raises(ModelError, match="invalid_configuration"):
         ModelConfig.from_environment()

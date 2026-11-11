@@ -1,6 +1,6 @@
 # 后端服务基础
 
-本模块使用 FastAPI、SQLModel 和 Alembic。当前提供健康检查、参与者凭证登录、演示版同意、任务分配、服务端阶段计时、构思和作品草稿、初稿与终稿快照，以及开发中的 AI 对话接口；前端 AI 联动、问卷和教师评分尚未实现。
+本模块使用 FastAPI、SQLModel 和 Alembic。当前提供健康检查、参与者凭证登录、演示版同意、任务分配、服务端阶段计时、构思和作品草稿、初稿与终稿快照，以及 AI 对话接口和工作台联动；问卷和教师评分尚未实现。
 
 ## 本地运行
 
@@ -38,7 +38,26 @@ $env:APP_MODE = 'demo'
 
 ## AI 适配层（开发中）
 
-已添加兼容 chat-completions 消息格式的服务端适配层。配置使用环境变量 `AI_CHAT_ENDPOINT`（服务商的完整 HTTPS 对话接口地址）、`AI_CHAT_MODEL`、`AI_API_KEY` 和可选的 `AI_TIMEOUT_SECONDS`（1—120 秒，默认 30）。密钥仅供后端读取，不要提交至仓库。适配层测试使用模拟传输，不产生实际模型调用。
+已添加兼容 chat-completions 消息格式的服务端适配层。配置使用环境变量 `AI_CHAT_ENDPOINT`（服务商的完整 HTTPS 对话接口地址）、`AI_CHAT_MODEL`、`AI_API_KEY`、`AI_TIMEOUT_SECONDS`（1—120 秒，默认 30）及 `AI_MAX_OUTPUT_TOKENS`（1—4096，默认 1024）。`AI_DEEPSEEK_NON_THINKING=true` 仅用于官方 DeepSeek 域名，关闭深度思考。密钥仅供后端读取，不要提交至仓库。自动化测试使用模拟传输，不产生实际模型调用。
+
+### 本地 DeepSeek 连通检查
+
+在 DeepSeek 平台获取 API 密钥并确认账户可用。在 `backend` 目录的 PowerShell 中执行下面的命令；密钥通过隐藏输入放入当前进程环境，不会写入命令文本或项目文件。新终端需重新设置。模型名称和接口地址应以 [DeepSeek 官方文档](https://api-docs.deepseek.com/)为准。
+
+```powershell
+$env:AI_CHAT_ENDPOINT = 'https://api.deepseek.com/chat/completions'
+$env:AI_CHAT_MODEL = 'deepseek-flash'
+$env:AI_DEEPSEEK_NON_THINKING = 'true'
+$env:AI_MAX_OUTPUT_TOKENS = '1024'
+$env:AI_TIMEOUT_SECONDS = '60'
+$secret = Read-Host '输入 DeepSeek API 密钥' -AsSecureString
+$secretPtr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secret)
+try { $env:AI_API_KEY = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($secretPtr) }
+finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($secretPtr) }
+.\.venv\Scripts\python.exe -m app.check_ai --run
+```
+
+`--run` 会向模型发送一次固定的非敏感短句，可能产生 API 费用；程序只显示成功或错误类别，不打印密钥或模型回复。成功后在同一终端运行本地后端命令，服务才会继承这些设置。退出终端会结束当前进程环境配置，已运行的服务需要重启才能读取新设置。未加 `--run` 不会发起请求。
 
 `POST /api/v1/sessions/{id}/chat` 接收 `client_request_id`（UUID）和 `message`，仅允许本人在 AI 场次的创作时间内调用；同一请求编号重复提交返回原状态，单场最多 20 次且同时只有一个请求执行。`GET /api/v1/sessions/{id}/chat` 读取本场历史。请求和回复、状态、模型及提示词版本保存在数据库；模型出错不影响作品草稿。接口直接等待模型响应，调用失败会记录为 `FAILED`；进程在模型调用期间意外退出时，记录可能停留在 `PENDING`，目前尚无自动恢复机制。
 

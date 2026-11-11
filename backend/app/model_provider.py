@@ -1,4 +1,4 @@
-"""Server-side text model adapter; not yet exposed as a participant endpoint."""
+"""Server-side text model adapter."""
 
 from dataclasses import dataclass, field
 import json
@@ -22,6 +22,8 @@ class ModelConfig:
     model: str
     api_key: str = field(repr=False)
     timeout_seconds: float = 30
+    max_output_tokens: int = 1024
+    deepseek_non_thinking: bool = False
 
     @classmethod
     def from_environment(cls) -> "ModelConfig":
@@ -30,16 +32,20 @@ class ModelConfig:
         key = os.getenv("AI_API_KEY", "").strip()
         try:
             timeout = float(os.getenv("AI_TIMEOUT_SECONDS", "30"))
+            max_output = int(os.getenv("AI_MAX_OUTPUT_TOKENS", "1024"))
         except ValueError:
             raise ModelError("invalid_configuration") from None
         try:
             url = urlsplit(endpoint)
         except ValueError:
             raise ModelError("invalid_configuration") from None
+        thinking = os.getenv("AI_DEEPSEEK_NON_THINKING", "false").strip().lower()
         if (url.scheme != "https" or not url.hostname or url.username or url.password
-                or url.fragment or not model or not key or not 1 <= timeout <= 120):
+                or url.fragment or not model or not key or not 1 <= timeout <= 120
+                or not 1 <= max_output <= 4096 or thinking not in {"true", "false"}
+                or (thinking == "true" and url.hostname != "api.deepseek.com")):
             raise ModelError("invalid_configuration")
-        return cls(endpoint, model, key, timeout)
+        return cls(endpoint, model, key, timeout, max_output, thinking == "true")
 
 
 @dataclass(frozen=True)
@@ -77,7 +83,10 @@ class CompatibleChatProvider:
         if not messages or any(set(m) != {"role", "content"} or m["role"] not in {"system", "user", "assistant"}
                                or not isinstance(m["content"], str) or not m["content"].strip() for m in messages):
             raise ValueError("invalid messages")
-        payload = json.dumps({"model": self._config.model, "messages": messages, "stream": False}, ensure_ascii=False).encode("utf-8")
+        payload_data = {"model": self._config.model, "messages": messages, "stream": False, "max_tokens": self._config.max_output_tokens}
+        if self._config.deepseek_non_thinking:
+            payload_data["thinking"] = {"type": "disabled"}
+        payload = json.dumps(payload_data, ensure_ascii=False).encode("utf-8")
         request = Request(self._config.endpoint, data=payload, method="POST", headers={
             "Authorization": f"Bearer {self._config.api_key}", "Content-Type": "application/json",
         })
